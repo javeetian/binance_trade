@@ -8,6 +8,7 @@ last_price = dbroot['last_price']
 api_key = dbroot['api_key']
 api_secret = dbroot['api_secret']
 print last_price
+transaction.commit()
 db.close()
 client = Client(api_key, api_secret)
 while (1):
