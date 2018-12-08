@@ -1,5 +1,5 @@
-from binance.client import Client
 import time
+from binance.client import Client
 import requests
 from myzodb import MyZODB, transaction
 db = MyZODB('./Data.fs')
@@ -18,38 +18,67 @@ ask_price = 1000000.0
 ask_quantity = 0.0
 ask_index = 0
 str_eos = 'EOS'
-while (1):
+order_bid_quantity = 0.0
+order_bid_price = 0.0
+order_ask_quantity = 0.0
+order_ask_price = 0.0
+
+def get_balances(client):
     try:
         account = client.get_account()
+    except requests.exceptions.ConnectionError as e:  # This is the correct syntax
+        print e
+    else:
+        balances = account['balances']
+        for val in enumerate(balances):
+            if val['asset'] == 'EOS':
+                order_ask_quantity = float(val['free']) * 0.2
+                print val['free'], order_ask_quantity
+                if(order_ask_quantity < 10):
+                    order_ask_quantity = 0
+            if val['asset'] == 'BNB':
+                order_bid_quantity = float(val['free']) * 0.2
+                print val['free'], order_bid_quantity
+                if(order_bid_quantity < 5):
+                    order_bid_quantity = 0
+
+def get_bids(bids):
+        price = 0.0
+        for i, val in enumerate(bids):
+            if float(val[0]) > price:
+                price = float(val[0])
+                quantity = float(val[1])
+                bid_index = i
+        print bid_index, price, quantity
+        return price, quantity
+
+def get_asks(asks):
+        price = 1000000.0
+        for i, val in enumerate(asks):
+            if float(val[0]) < price:
+                price = float(val[0])
+                quantity = float(val[1])
+                ask_index = i
+        print ask_index, price, quantity
+        return price, quantity
+
+def get_bids_asks(client):
+    try:
         depth = client.get_order_book(symbol='EOSBNB')
     except requests.exceptions.ConnectionError as e:  # This is the correct syntax
         print e
     else:
         print time.asctime( time.localtime(time.time()) )
-        balances = account['balances']
-        for i, val in enumerate(balances):
-            if val['asset'] == 'EOS'
-                print val['free']
-            if val['asset'] == 'BNB'
-                print val['free']
         bids = depth['bids']
-        print 'bids:'
-        for i, val in enumerate(bids):
-            if float(val[0]) > bid_price:
-                bid_price = float(val[0])
-                bid_quantity = float(val[1])
-                bid_index = i
-        print bid_index, bid_price, bid_quantity
+        bids_price, bids_quantity = get_bids(bids)
         asks = depth['asks']
-        print 'asks:'
-        for i, val in enumerate(asks):
-            if float(val[0]) < ask_price:
-                ask_price = float(val[0])
-                ask_quantity = float(val[1])
-                ask_index = i
-        print ask_index, ask_price, ask_quantity
-    time.sleep(50)
+        asks_price, asks_quantity = get_asks(asks)
+    return bids_price, bids_quantity, asks_price, asks_quantity
 
+while (1):
+    get_balances(client)
+    bids_price, bids_quantity, ask_price, asks_quantity = get_bids_asks(client)
+    time.sleep(50)
 
 
 # get info
