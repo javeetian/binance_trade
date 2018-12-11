@@ -75,7 +75,7 @@ def cancel_all_orders(client):
 
 last_price, api_key, api_secret = fetch_configs()
 client = Client(api_key, api_secret)
-profit = 0.01
+profit = 0.06
 sell_count = 0
 mqttc = mqtt.Client()
 mqttc.on_connect = on_connect
@@ -102,10 +102,10 @@ while (1):
             last_price = float(bids3[2][0])
             store_price(last_price)
             sell_count += 1
-            notify("Notify", notify_str)
-            mqttc.publish('tjwtjwtjw',payload=notify_str,qos=0)
             response = client.create_test_order(symbol='EOSBNB', side='SELL', type='LIMIT', quantity=order_ask_quantity, price=float(bids3[2][0]), timeInForce='GTC')
             print response
+            notify("Notify", notify_str)
+            mqttc.publish('tjwtjwtjw',payload=notify_str,qos=0)
     #buy
     if(buy_price > float(asks3[2][0])):
         if((order_bid_quantity > 0) and (order_bid_quantity < (float(asks3[0][1]) + float(asks3[1][1]) + float(asks3[2][1])))):
@@ -113,10 +113,10 @@ while (1):
             last_price = float(asks3[2][0])
             store_price(last_price)
             sell_count -= 1
-            notify("Notify", notify_str)
-            mqttc.publish('tjwtjwtjw',payload=notify_str,qos=0)
             response = client.create_test_order(symbol='EOSBNB', side='BUY', type='LIMIT', quantity=order_bid_quantity, price=float(asks3[2][0]), timeInForce='GTC')
             print response
+            notify("Notify", notify_str)
+            mqttc.publish('tjwtjwtjw',payload=notify_str,qos=0)
     print 'sell_count: ', sell_count
     if(sell_count > 3 or sell_count < -3):
         print 'abnormal sell_count!!!!!!'
