@@ -45,6 +45,8 @@ def store_sell_count(count):
 
 def get_balances(client):
     ret = 0
+    ask_quantity = 0
+    bid_quantity = 0
     try:
         eos = client.get_asset_balance('EOS')
         bnb = client.get_asset_balance('BNB')
@@ -68,6 +70,8 @@ def get_balances(client):
 
 def get_bids_asks(client):
     ret = 0
+    bids3 = 0
+    asks3 = 0
     try:
         depth = client.get_order_book(symbol='EOSBNB')
     except requests.exceptions.ConnectionError as e:  # This is the correct syntax
@@ -124,11 +128,11 @@ logging.getLogger().addHandler(logging.StreamHandler())
 last_price, sell_count, api_key, api_secret = fetch_configs()
 client = Client(api_key, api_secret)
 profit = 0.06
-mqttc = mqtt.Client()
-mqttc.on_connect = on_connect
-mqttc.on_message = on_message
-mqttc.connect("test.mosquitto.org")
-mqttc.loop_start()
+#mqttc = mqtt.Client()
+#mqttc.on_connect = on_connect
+#mqttc.on_message = on_message
+#mqttc.connect("test.mosquitto.org")
+#mqttc.loop_start()
 while (1):
     logging.info('\n')
     logging.info(time.asctime( time.localtime(time.time()) ))
@@ -159,10 +163,11 @@ while (1):
             last_price = float(bids3[2][0])
             store_price(last_price)
             sell_count += 1
+            store_sell_count(sell_count)
             response = client.create_order(symbol='EOSBNB', side='SELL', type='LIMIT', quantity=order_ask_quantity, price=float(bids3[2][0]), timeInForce='GTC')
             logging.warn(response)
             notify("Notify", notify_str)
-            mqttc.publish('tjwtjwtjw',payload=notify_str,qos=0)
+            #mqttc.publish('tjwtjwtjw',payload=notify_str,qos=0)
     #buy
     if(buy_price > float(asks3[2][0])):
         if((order_bid_quantity > 0) and (order_bid_quantity < (float(asks3[0][1]) + float(asks3[1][1]) + float(asks3[2][1])))):
@@ -171,14 +176,15 @@ while (1):
             last_price = float(asks3[2][0])
             store_price(last_price)
             sell_count -= 1
+            store_sell_count(sell_count)
             response = client.create_order(symbol='EOSBNB', side='BUY', type='LIMIT', quantity=order_bid_quantity, price=float(asks3[2][0]), timeInForce='GTC')
             logging.warn(response)
             notify("Notify", notify_str)
-            mqttc.publish('tjwtjwtjw',payload=notify_str,qos=0)
+            #mqttc.publish('tjwtjwtjw',payload=notify_str,qos=0)
     logging.info('sell_count: ' + str(sell_count))
     if(sell_count > 3 or sell_count < -3):
         logging.warn('abnormal sell_count!!!!!!')
         notify("Warning", "abnormal sell_count!!!!!!")
-        mqttc.publish('tjwtjwtjw',payload='abnormal sell_count!!!!!!',qos=0)
+        #mqttc.publish('tjwtjwtjw',payload='abnormal sell_count!!!!!!',qos=0)
     time.sleep(50)
 
