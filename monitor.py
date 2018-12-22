@@ -3,6 +3,7 @@ import time
 from datetime import datetime
 import requests
 import logging
+import binance
 from binance.client import Client
 from myzodb import MyZODB, transaction
 import paho.mqtt.client as mqtt
@@ -99,6 +100,9 @@ def check_open_orders(client):
         logging.error(e)
         ret = -1
     except requests.exceptions.ReadTimeout as e:
+        logging.error(e)
+        ret = -2
+    except binance.exceptions.BinanceAPIException as e:
         logging.error(e)
         ret = -2
     else:
