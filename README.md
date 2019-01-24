@@ -1,12 +1,12 @@
 # binance_trade
 Auto trade EOS/BNB pair on binance exchange
 
-# install
+### install
 pip install -r requests.txt
 
-# modify the api key to your own
+### modify the api key to your own
 in fetch_configs, modify the initial constants
 
-# run
+### run
 python monitor.py
 
