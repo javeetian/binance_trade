@@ -23,10 +23,35 @@ def notify(title, text):
 def fetch_configs():
     db = MyZODB('./Data.fs')
     dbroot = db.dbroot
-    price = dbroot['last_price']
-    count = dbroot['sell_count']
-    key = dbroot['api_key']
-    secret = dbroot['api_secret']
+    price = 0
+    count = 0
+    key = ''
+    secret = ''
+    try:
+        price = dbroot['last_price']
+    except KeyError as e:
+        logging.debug(e)
+        dbroot['last_price'] = 0  # set to last trade price
+
+    try:
+        count = dbroot['sell_count']
+    except KeyError as e:
+        logging.debug(e)
+        dbroot['sell_count'] = 0
+
+    try:
+        key = dbroot['api_key']
+    except KeyError as e:
+        logging.debug(e)
+        dbroot['api_key'] = "Your api key"
+
+    try:
+        secret = dbroot['api_secret']
+    except KeyError as e:
+        logging.debug(e)
+        dbroot['api_secret'] = "Your api secret"
+        
+    transaction.commit()
     db.close()
     return price, count, key, secret
 
@@ -110,7 +135,7 @@ def check_open_orders(client):
         for order in orders:
             notify_str = 'have open orders, please check, now exit program!!!!'
             notify("Notify", notify_str)
-            mqttc.publish('tjwtjwtjw',payload=notify_str,qos=0)
+            mqttc.publish(PUB_TOPIC,payload=notify_str,qos=0)
             exit(1)
             #client.cancel_order(symbol='EOSBNB', orderId=order['orderId'])
     return ret
@@ -118,25 +143,20 @@ def check_open_orders(client):
 
 logging.basicConfig(filename=datetime.now().strftime('./log/%Y_%m_%d_%H_%M.log'),level=logging.DEBUG)
 logging.getLogger().addHandler(logging.StreamHandler())
-# logFormatter = logging.Formatter("%(asctime)s [%(threadName)-12.12s] [%(levelname)-5.5s]  %(message)s")
-# rootLogger = logging.getLogger()
 
-# fileHandler = logging.FileHandler("{0}/{1}.log".format('./log', datetime.now().strftime('monitor_%H_%M_%d_%m_%Y.log')))
-# fileHandler.setFormatter(logFormatter)
-# rootLogger.addHandler(fileHandler)
-
-# consoleHandler = logging.StreamHandler()
-# consoleHandler.setFormatter(logFormatter)
-# rootLogger.addHandler(consoleHandler)
 
 last_price, sell_count, api_key, api_secret = fetch_configs()
 client = Client(api_key, api_secret)
 profit = 0.06
-#mqttc = mqtt.Client()
-#mqttc.on_connect = on_connect
-#mqttc.on_message = on_message
-#mqttc.connect("test.mosquitto.org")
-#mqttc.loop_start()
+sleep_time = 50
+PUB_TOPIC = 'tjwtjwtjw'
+mqttc = mqtt.Client()
+mqttc.on_connect = on_connect
+mqttc.on_message = on_message
+mqttc.connect("test.mosquitto.org")
+mqttc.loop_start()
+
+
 while (1):
     logging.info('\n')
     logging.info(time.asctime( time.localtime(time.time()) ))
@@ -171,7 +191,10 @@ while (1):
             response = client.create_order(symbol='EOSBNB', side='SELL', type='LIMIT', quantity=order_ask_quantity, price=float(bids3[2][0]), timeInForce='GTC')
             logging.warn(response)
             notify("Notify", notify_str)
-            #mqttc.publish('tjwtjwtjw',payload=notify_str,qos=0)
+            mqttc.publish(PUB_TOPIC,payload=notify_str,qos=0)
+        else:
+            if(order_ask_quantity > 0):
+                sleep_time = 5
     #buy
     if(buy_price > float(asks3[2][0])):
         if((order_bid_quantity > 0) and (order_bid_quantity < (float(asks3[0][1]) + float(asks3[1][1]) + float(asks3[2][1])))):
@@ -184,11 +207,14 @@ while (1):
             response = client.create_order(symbol='EOSBNB', side='BUY', type='LIMIT', quantity=order_bid_quantity, price=float(asks3[2][0]), timeInForce='GTC')
             logging.warn(response)
             notify("Notify", notify_str)
-            #mqttc.publish('tjwtjwtjw',payload=notify_str,qos=0)
+            mqttc.publish(PUB_TOPIC,payload=notify_str,qos=0)
+        else:
+            if(order_ask_quantity > 0):
+                sleep_time = 5
     logging.info('sell_count: ' + str(sell_count))
     if(sell_count > 3 or sell_count < -3):
         logging.warn('abnormal sell_count!!!!!!')
         notify("Warning", "abnormal sell_count!!!!!!")
-        #mqttc.publish('tjwtjwtjw',payload='abnormal sell_count!!!!!!',qos=0)
-    time.sleep(50)
+        mqttc.publish(PUB_TOPIC,payload='abnormal sell_count!!!!!!',qos=0)
+    time.sleep(sleep_time)
 
