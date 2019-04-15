@@ -4,6 +4,7 @@ from datetime import datetime
 import requests
 import logging
 import binance
+import ConfigParser
 from binance.client import Client
 from myzodb import MyZODB, transaction
 import paho.mqtt.client as mqtt
@@ -73,28 +74,29 @@ def get_price(client, sym):
     result = client.get_symbol_ticker(symbol=sym)
     return result['price']
 
-def get_availalbe_quantity(res, sym):
+def get_available_quantity(res, sym):
     # find asset balance in list of balances
     if "balances" in res:
         for bal in res['balances']:
-            if bal['asset'].lower() == sym.lower():
+            if bal['asset'].lower() == sym[:-3].lower():
                 return float(bal['free'])
     return 0
 
-def get_availalbe_quantity(res, sym):
-    # find asset balance in list of balances
-    if "balances" in res:
-        for bal in res['balances']:
-            if bal['asset'].lower() == sym.lower():
-                return float(bal['free'])
-    return 0
+def get_available_price(prices, sym):
+    ret = -1
+    for res in prices:
+        if res['symbol'].lower() == sym.lower():
+            ret = float(res['price'])
+    return ret
 
-def get_balances(client, sym):
+def get_pairs_info(syms, account, prices):
+    return [{"symbol":sym, "balance":get_available_quantity(account,sym), "price":get_available_price(prices,sym), "avail":round(bid_quantity/get_available_price(prices,sym),4)} for sym in syms]
+
+def get_balances(client, syms):
     ret = 0
     ask_quantity = 0
-    bid_quantity = 20
     try:
-        res = client.get_account()
+        account_info = client.get_account()
         prices = client.get_symbol_ticker()
     except requests.exceptions.ConnectionError as e:  # This is the correct syntax
         logging.error(e)
@@ -103,16 +105,12 @@ def get_balances(client, sym):
         logging.error(e)
         ret = -2
     else:
-        print res
-        print prices
-        if(ask_quantity > 1000):
-            ask_quantity = 0
-            notify("Notify", 'Not enough EOS')
-        if(bid_quantity > get_availalbe_quantity(res,'BNB')):
-            bid_quantity = 0
-            notify("Notify", 'Not enough BNB')
-        logging.debug('Balances EOS: ' + str(eos['free']) + ' BNB: ' + str(bnb['free']))
-    return ret, round(ask_quantity, 2), round(bid_quantity, 2)
+        #print account_info
+        #print prices
+        pairs_info = get_pairs_info(syms, account_info, prices)
+        print pairs_info
+        
+    return ret, pairs_info
 
 def get_bids_asks(client, sym):
     ret = 0
@@ -165,12 +163,25 @@ logging.basicConfig(filename=datetime.now().strftime('./log/%Y_%m_%d_%H_%M.log')
 logging.getLogger().addHandler(logging.StreamHandler())
 
 
+if(os.path.isfile('monitor.ini')):
+    Config = ConfigParser.ConfigParser()
+    Config.read("monitor.ini")
+else:
+    exit(1)
+
 last_price, sell_count, api_key, api_secret = fetch_configs()
 client = Client(api_key, api_secret)
 profit = 0.06
 sleep_time = 50
 PUB_TOPIC = 'tjwtjwtjw'
-trade_pairs = ['EOSBNB','LTCBNB','ADABNB','XRPBNB','TRXBNB','FETBNB','BTTBNB','RVNBNB', 'CELRBNB', 'NEOBNB', 'NANOBNB', 'IOSTBNB', 'THETABNB', 'ONTBNB', 'ENJBNB', 'XLMBNB']
+trade_pairs = [section for section in Config.sections()]
+print trade_pairs
+
+pairs_local = [{'symbol':pair,'price':Config.get(pair,"Price"),'count':Config.get(pair,"Count")} for pair in trade_pairs]
+print pairs_local
+
+bid_quantity = 20
+exit(1)
 #mqttc = mqtt.Client()
 #mqttc.on_connect = on_connect
 #mqttc.on_message = on_message
@@ -189,17 +200,14 @@ while (1):
     if ret <  0:
         time.sleep(10)
         continue
-    ret, order_ask_quantity, order_bid_quantity = get_balances(client, trade_pairs)
+    ret, pairs_info = get_balances(client, trade_pairs)
     if ret <  0:
         time.sleep(10)
         continue
-    logging.info('buy quantity: ' + str(order_bid_quantity) + 'sell quantity: ' + str(order_ask_quantity))
-    ret, bids3, asks3 = get_bids_asks(client, trade_pairs)
-    if ret <  0:
-        time.sleep(10)
-        continue
-    logging.info('bids: ' + str(bids3))
-    logging.info('asks: ' + str(asks3))
+    for pair in pairs_info:
+        if pair != pairs_info[0]:
+            ret, pair['bids'], pair['asks'] = get_bids_asks(client, pair['symbol'])
+    logging.info('pairs: ' + str(pairs_info))
     time.sleep(sleep_time)
     continue
     #sell
