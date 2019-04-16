@@ -24,21 +24,8 @@ def notify(title, text):
 def fetch_configs():
     db = MyZODB('./Data.fs')
     dbroot = db.dbroot
-    price = 0
-    count = 0
     key = ''
     secret = ''
-    try:
-        price = dbroot['last_price']
-    except KeyError as e:
-        logging.debug(e)
-        dbroot['last_price'] = 0  # set to last trade price
-
-    try:
-        count = dbroot['sell_count']
-    except KeyError as e:
-        logging.debug(e)
-        dbroot['sell_count'] = 0
 
     try:
         key = dbroot['api_key']
@@ -54,21 +41,7 @@ def fetch_configs():
         
     transaction.commit()
     db.close()
-    return price, count, key, secret
-
-def store_price(price):
-    db = MyZODB('./Data.fs')
-    dbroot = db.dbroot
-    dbroot['last_price'] = price
-    transaction.commit()
-    db.close()
-
-def store_sell_count(count):
-    db = MyZODB('./Data.fs')
-    dbroot = db.dbroot
-    dbroot['sell_count'] = count
-    transaction.commit()
-    db.close()
+    return key, secret
 
 def get_price(client, sym):
     result = client.get_symbol_ticker(symbol=sym)
@@ -89,12 +62,9 @@ def get_available_price(prices, sym):
             ret = float(res['price'])
     return ret
 
-def get_pairs_info(syms, account, prices):
-    return [{"symbol":sym, "balance":get_available_quantity(account,sym), "price":get_available_price(prices,sym), "avail":round(bid_quantity/get_available_price(prices,sym),4)} for sym in syms]
 
 def get_balances(client, syms):
     ret = 0
-    ask_quantity = 0
     try:
         account_info = client.get_account()
         prices = client.get_symbol_ticker()
@@ -107,10 +77,14 @@ def get_balances(client, syms):
     else:
         #print account_info
         #print prices
-        pairs_info = get_pairs_info(syms, account_info, prices)
-        print pairs_info
+        for sym in syms:
+            sym['balance'] = get_available_quantity(account_info,sym['symbol'])
+            sym['price'] = get_available_price(prices,sym['symbol'])
+            sym['quantity'] = round(float(sym['amount'])/get_available_price(prices,sym['symbol']),1)
+
+        print syms
         
-    return ret, pairs_info
+    return ret, syms
 
 def get_bids_asks(client, sym):
     ret = 0
@@ -151,37 +125,27 @@ def check_open_orders(client, sym):
     else:
         logging.info('Open orders: ' + str(orders))
         for order in orders:
-            notify_str = 'have open orders, please check, now exit program!!!!'
-            notify("Notify", notify_str)
-            #mqttc.publish(PUB_TOPIC,payload=notify_str,qos=0)
+            alert('have open orders, please check, now exit program!!!!')
+            time.sleep(5)
             exit(1)
             #client.cancel_order(symbol=sym, orderId=order['orderId'])
     return ret
 
+def alert(str):
+    logging.warn(str)
+    notify("Warning", str)
+    #mqttc.publish(PUB_TOPIC,payload=str,qos=0)
 
 logging.basicConfig(filename=datetime.now().strftime('./log/%Y_%m_%d_%H_%M.log'),level=logging.DEBUG)
 logging.getLogger().addHandler(logging.StreamHandler())
 
-
-if(os.path.isfile('monitor.ini')):
-    Config = ConfigParser.ConfigParser()
-    Config.read("monitor.ini")
-else:
-    exit(1)
-
-last_price, sell_count, api_key, api_secret = fetch_configs()
+api_key, api_secret = fetch_configs()
 client = Client(api_key, api_secret)
-profit = 0.06
+
 sleep_time = 50
 PUB_TOPIC = 'tjwtjwtjw'
-trade_pairs = [section for section in Config.sections()]
-print trade_pairs
+config_file = 'monitor.ini'
 
-pairs_local = [{'symbol':pair,'price':Config.get(pair,"Price"),'count':Config.get(pair,"Count")} for pair in trade_pairs]
-print pairs_local
-
-bid_quantity = 20
-exit(1)
 #mqttc = mqtt.Client()
 #mqttc.on_connect = on_connect
 #mqttc.on_message = on_message
@@ -192,60 +156,82 @@ exit(1)
 while (1):
     logging.info('\n')
     logging.info(time.asctime( time.localtime(time.time()) ))
-    logging.debug('last_price: ' + str(last_price))
-    sell_price = last_price * (1 + profit)
-    buy_price = last_price * (1 - profit)
-    logging.info('buy price: ' + str(buy_price) + 'sell price:' + str(sell_price))
-    ret = check_open_orders(client, trade_pairs)
+    if(os.path.isfile(config_file)):
+        Config = ConfigParser.ConfigParser()
+        Config.read(config_file)
+    else:
+        exit(1)
+    pairs_info = [{'symbol':section,'last_price':Config.get(section,"Price"),'count':Config.get(section,"Count"),'profit':Config.get(section,"Profit"),'amount':Config.get(section,"Amount")} for section in Config.sections()]
+    print pairs_info
+    ret = check_open_orders(client, pairs_info)
     if ret <  0:
         time.sleep(10)
         continue
-    ret, pairs_info = get_balances(client, trade_pairs)
+    ret, pairs_info = get_balances(client, pairs_info)
     if ret <  0:
         time.sleep(10)
         continue
     for pair in pairs_info:
         if pair != pairs_info[0]:
             ret, pair['bids'], pair['asks'] = get_bids_asks(client, pair['symbol'])
+    if ret <  0:
+        time.sleep(10)
+        continue
     logging.info('pairs: ' + str(pairs_info))
-    time.sleep(sleep_time)
-    continue
-    #sell
-    if(sell_price < float(bids3[2][0])):
-        if((order_ask_quantity > 0) and (order_ask_quantity < (float(bids3[0][1]) + float(bids3[1][1]) + float(bids3[2][1])))):
-            notify_str = 'SELL EOS price: ' + bids3[2][0] + ' quantity: ' + str(order_ask_quantity)
-            logging.warn(notify_str)
-            last_price = float(bids3[2][0])
-            store_price(last_price)
-            sell_count += 1
-            store_sell_count(sell_count)
-            response = client.create_order(symbol=trade_pairs, side='SELL', type='LIMIT', quantity=order_ask_quantity, price=float(bids3[2][0]), timeInForce='GTC')
-            logging.warn(response)
-            notify("Notify", notify_str)
-            #mqttc.publish(PUB_TOPIC,payload=notify_str,qos=0)
+    avail_amount = pairs_info[0]['balance']
+    for pl in pairs_info:
+        try:
+            sell_price = float(pl['last_price']) * (1 + float(pl['profit'])/100)
+            buy_price = float(pl['last_price']) / (1 + float(pl['profit'])/100)
+            bids3 = pl['bids']
+            asks3 = pl['asks']
+            order_quantity = pl['quantity']
+            order_amount = pl['amount']
+            avail_quantity = pl['balance']
+            sell_count = int(pl['count'])
+            sym = pl['symbol']
+        except KeyError as e:
+            print e.message, e.args
+            continue
         else:
-            if(order_ask_quantity > 0):
-                sleep_time = 5
-    #buy
-    if(buy_price > float(asks3[2][0])):
-        if((order_bid_quantity > 0) and (order_bid_quantity < (float(asks3[0][1]) + float(asks3[1][1]) + float(asks3[2][1])))):
-            notify_str = 'BUY EOS price: ' + asks3[2][0] + ' quantity: ' + str(order_bid_quantity)
-            logging.warn(notify_str)
-            last_price = float(asks3[2][0])
-            store_price(last_price)
-            sell_count -= 1
-            store_sell_count(sell_count)
-            response = client.create_order(symbol=trade_pairs, side='BUY', type='LIMIT', quantity=order_bid_quantity, price=float(asks3[2][0]), timeInForce='GTC')
-            logging.warn(response)
-            notify("Notify", notify_str)
-            #mqttc.publish(PUB_TOPIC,payload=notify_str,qos=0)
-        else:
-            if(order_ask_quantity > 0):
-                sleep_time = 5
-    logging.info('sell_count: ' + str(sell_count))
-    if(sell_count > 3 or sell_count < -3):
-        logging.warn('abnormal sell_count!!!!!!')
-        notify("Warning", "abnormal sell_count!!!!!!")
-        #mqttc.publish(PUB_TOPIC,payload='abnormal sell_count!!!!!!',qos=0)
+            print pl['symbol'],sell_price, buy_price, float(bids3[2][0]), float(asks3[2][0])
+
+            #sell
+            if(sell_price < float(bids3[2][0]) and sell_price > 0):
+                if((order_quantity > 0) and (order_quantity < avail_quantity) and (order_quantity < (float(bids3[0][1]) + float(bids3[1][1]) + float(bids3[2][1])))):
+                    notify_str = 'SELL ' +  sym + ' price: ' + bids3[2][0] + ' quantity: ' + str(order_quantity)
+
+                    sell_count += 1
+                    Config.set(sym, 'Price', str(float(bids3[2][0])))
+                    Config.set(sym, 'Count', str(sell_count))
+                    with open(config_file, 'wb') as configfile:
+                        Config.write(configfile)
+                    response = client.create_test_order(symbol=sym, side='SELL', type='LIMIT', quantity=order_quantity, price=float(bids3[2][0]), timeInForce='GTC')
+                    logging.warn(response)
+                    alert(notify_str)
+                else:
+                    if(order_quantity > avail_quantity):
+                        alert('SELL ' +  sym + ' not enough quantity')
+
+            #buy
+            if(buy_price > float(asks3[2][0]) and buy_price > 0):
+                if((order_quantity > 0) and (order_mount < avail_amount) and (order_quantity < (float(asks3[0][1]) + float(asks3[1][1]) + float(asks3[2][1])))):
+                    sell_count -= 1
+                    Config.set(sym, 'Price', str(float(asks3[2][0])))
+                    Config.set(sym, 'Count', str(sell_count))
+                    with open(config_file, 'wb') as configfile:
+                        Config.write(configfile)
+                    response = client.create_test_order(symbol=sym, side='BUY', type='LIMIT', quantity=order_quantity, price=float(asks3[2][0]), timeInForce='GTC')
+                    logging.warn(response)
+                    alert('BUY ' + sym + ' price: ' + asks3[2][0] + ' quantity: ' + str(order_quantity))
+                else:
+                    if(order_amount > avail_amount):
+                        alert('BUY ' +  sym + ' not enough amount')
+
+            logging.info('symbol: ' + sym + ', sell_count: ' + str(sell_count))
+            if(sell_count > 3 or sell_count < -3):
+                alert('abnormal sell_count!!!!!!')
+                
+            time.sleep(0.5)
     time.sleep(sleep_time)
 
