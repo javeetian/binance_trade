@@ -186,7 +186,7 @@ while (1):
             bids3 = pl['bids']
             asks3 = pl['asks']
             order_quantity = pl['quantity']
-            order_amount = pl['amount']
+            order_amount = float(pl['amount'])
             avail_quantity = pl['balance']
             sell_count = int(pl['count'])
             sym = pl['symbol']
@@ -195,7 +195,7 @@ while (1):
             continue
         else:
             print pl['symbol'],sell_price, buy_price, float(bids3[2][0]), float(asks3[2][0])
-
+            print order_quantity, avail_quantity, order_amount, avail_amount
             #sell
             if(sell_price < float(bids3[2][0]) and sell_price > 0):
                 if((order_quantity > 0) and (order_quantity < avail_quantity) and (order_quantity < (float(bids3[0][1]) + float(bids3[1][1]) + float(bids3[2][1])))):
@@ -206,25 +206,27 @@ while (1):
                     Config.set(sym, 'Count', str(sell_count))
                     with open(config_file, 'wb') as configfile:
                         Config.write(configfile)
-                    response = client.create_test_order(symbol=sym, side='SELL', type='LIMIT', quantity=order_quantity, price=float(bids3[2][0]), timeInForce='GTC')
+                    response = client.create_order(symbol=sym, side='SELL', type='LIMIT', quantity=order_quantity, price=float(bids3[2][0]), timeInForce='GTC')
                     logging.warn(response)
                     alert(notify_str)
                 else:
+                    print order_quantity, avail_quantity
                     if(order_quantity > avail_quantity):
                         alert('SELL ' +  sym + ' not enough quantity')
 
             #buy
             if(buy_price > float(asks3[2][0]) and buy_price > 0):
-                if((order_quantity > 0) and (order_mount < avail_amount) and (order_quantity < (float(asks3[0][1]) + float(asks3[1][1]) + float(asks3[2][1])))):
+                if((order_quantity > 0) and (order_amount < avail_amount) and (order_quantity < (float(asks3[0][1]) + float(asks3[1][1]) + float(asks3[2][1])))):
                     sell_count -= 1
                     Config.set(sym, 'Price', str(float(asks3[2][0])))
                     Config.set(sym, 'Count', str(sell_count))
                     with open(config_file, 'wb') as configfile:
                         Config.write(configfile)
-                    response = client.create_test_order(symbol=sym, side='BUY', type='LIMIT', quantity=order_quantity, price=float(asks3[2][0]), timeInForce='GTC')
+                    response = client.create_order(symbol=sym, side='BUY', type='LIMIT', quantity=order_quantity, price=float(asks3[2][0]), timeInForce='GTC')
                     logging.warn(response)
                     alert('BUY ' + sym + ' price: ' + asks3[2][0] + ' quantity: ' + str(order_quantity))
                 else:
+                    print order_amount, avail_amount
                     if(order_amount > avail_amount):
                         alert('BUY ' +  sym + ' not enough amount')
 
