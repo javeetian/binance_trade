@@ -6,7 +6,6 @@ import logging
 import binance
 import ConfigParser
 from binance.client import Client
-from myzodb import MyZODB, transaction
 import paho.mqtt.client as mqtt
  
 def on_connect(client, userdata, flags, rc):
@@ -20,28 +19,6 @@ def notify(title, text):
     os.system("""
               osascript -e 'display notification "{}" with title "{}"'
               """.format(text, title))
-
-def fetch_configs():
-    db = MyZODB('./Data.fs')
-    dbroot = db.dbroot
-    key = ''
-    secret = ''
-
-    try:
-        key = dbroot['api_key']
-    except KeyError as e:
-        logging.debug(e)
-        dbroot['api_key'] = "Your api key"
-
-    try:
-        secret = dbroot['api_secret']
-    except KeyError as e:
-        logging.debug(e)
-        dbroot['api_secret'] = "Your api secret"
-        
-    transaction.commit()
-    db.close()
-    return key, secret
 
 def get_price(client, sym):
     result = client.get_symbol_ticker(symbol=sym)
@@ -133,16 +110,16 @@ def check_open_orders(client, sym):
 
 def alert(str):
     logging.warn(str)
-    notify("Warning", str)
+    #notify("Warning", str)
     #mqttc.publish(PUB_TOPIC,payload=str,qos=0)
 
 logging.basicConfig(filename=datetime.now().strftime('./log/%Y_%m_%d_%H_%M.log'),level=logging.DEBUG)
 logging.getLogger().addHandler(logging.StreamHandler())
 
-api_key, api_secret = fetch_configs()
-client = Client(api_key, api_secret)
+api_key = ''
+api_secret = '' 
 
-sleep_time = 50
+sleep_time = 300
 PUB_TOPIC = 'tjwtjwtjw'
 config_file = 'monitor.ini'
 
@@ -154,6 +131,7 @@ config_file = 'monitor.ini'
 
 
 while (1):
+    client = Client(api_key, api_secret)
     logging.info('\n')
     logging.info(time.asctime( time.localtime(time.time()) ))
     if(os.path.isfile(config_file)):
@@ -207,7 +185,7 @@ while (1):
                     with open(config_file, 'wb') as configfile:
                         Config.write(configfile)
                     response = client.create_order(symbol=sym, side='SELL', type='LIMIT', quantity=order_quantity, price=float(bids3[2][0]), timeInForce='GTC')
-                    logging.warn(response)
+                    #logging.warn(response)
                     alert(notify_str)
                 else:
                     print order_quantity, avail_quantity
@@ -223,7 +201,7 @@ while (1):
                     with open(config_file, 'wb') as configfile:
                         Config.write(configfile)
                     response = client.create_order(symbol=sym, side='BUY', type='LIMIT', quantity=order_quantity, price=float(asks3[2][0]), timeInForce='GTC')
-                    logging.warn(response)
+                    #logging.warn(response)
                     alert('BUY ' + sym + ' price: ' + asks3[2][0] + ' quantity: ' + str(order_quantity))
                 else:
                     print order_amount, avail_amount
@@ -235,5 +213,6 @@ while (1):
                 alert('abnormal sell_count!!!!!!')
                 
             time.sleep(0.5)
-    time.sleep(sleep_time)
+    #time.sleep(sleep_time)
+    break
 
