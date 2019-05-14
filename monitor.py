@@ -1,20 +1,17 @@
 import os
+import sys
 import time
-from datetime import datetime
 import requests
 import logging
 import binance
 import ConfigParser
+from datetime import datetime
 from binance.client import Client
-import paho.mqtt.client as mqtt
- 
-def on_connect(client, userdata, flags, rc):
-  logging.info("Connected with result code "+str(rc))
 
-def on_message(client, userdata, msg):
-  logging.info(msg.topic+" "+str(msg.payload))
-
-
+def telegram_bot_sendtext(bot_token, bot_chatID, bot_message):
+    response = requests.get('https://api.telegram.org/bot' + bot_token + '/sendMessage?chat_id=' + bot_chatID + '&parse_mode=Markdown&text=' + bot_message)
+    return response.json()
+	
 def notify(title, text):
     os.system("""
               osascript -e 'display notification "{}" with title "{}"'
@@ -110,25 +107,23 @@ def check_open_orders(client, sym):
 
 def alert(str):
     logging.warn(str)
+    telegram_bot_sendtext(bot_token, bot_chatID, str)
     #notify("Warning", str)
-    #mqttc.publish(PUB_TOPIC,payload=str,qos=0)
 
+if(len(sys.argv) < 5):
+	print('Not enough parameters exit!')
+	exit(1)
+	
 logging.basicConfig(filename=datetime.now().strftime('./log/%Y_%m_%d_%H_%M.log'),level=logging.DEBUG)
 logging.getLogger().addHandler(logging.StreamHandler())
 
-api_key = ''
-api_secret = '' 
+api_key = sys.argv[1]
+api_secret = sys.argv[2]
+bot_token = sys.argv[3]
+bot_chatID = sys.argv[4]
 
 sleep_time = 300
-PUB_TOPIC = 'tjwtjwtjw'
 config_file = 'monitor.ini'
-
-#mqttc = mqtt.Client()
-#mqttc.on_connect = on_connect
-#mqttc.on_message = on_message
-#mqttc.connect("test.mosquitto.org")
-#mqttc.loop_start()
-
 
 while (1):
     client = Client(api_key, api_secret)
@@ -177,8 +172,6 @@ while (1):
             #sell
             if(sell_price < float(bids3[2][0]) and sell_price > 0):
                 if((order_quantity > 0) and (order_quantity < avail_quantity) and (order_quantity < (float(bids3[0][1]) + float(bids3[1][1]) + float(bids3[2][1])))):
-                    notify_str = 'SELL ' +  sym + ' price: ' + bids3[2][0] + ' quantity: ' + str(order_quantity)
-
                     sell_count += 1
                     Config.set(sym, 'Price', str(float(bids3[2][0])))
                     Config.set(sym, 'Count', str(sell_count))
@@ -186,11 +179,10 @@ while (1):
                         Config.write(configfile)
                     response = client.create_order(symbol=sym, side='SELL', type='LIMIT', quantity=order_quantity, price=float(bids3[2][0]), timeInForce='GTC')
                     #logging.warn(response)
-                    alert(notify_str)
+                    alert('SELL ' +  sym + ' price: ' + bids3[2][0] + ' quantity: ' + str(order_quantity) + 'sell_count: ' + sell_count + ' now left: ' + str(avail_quantity - order_quantity))
                 else:
-                    print order_quantity, avail_quantity
                     if(order_quantity > avail_quantity):
-                        alert('SELL ' +  sym + ' not enough quantity')
+                        logging.warn('SELL ' +  sym + ' quantity: ' + str(order_quantity) + ' not enough,' + ' now only: ' + str(avail_quantity))
 
             #buy
             if(buy_price > float(asks3[2][0]) and buy_price > 0):
@@ -202,15 +194,14 @@ while (1):
                         Config.write(configfile)
                     response = client.create_order(symbol=sym, side='BUY', type='LIMIT', quantity=order_quantity, price=float(asks3[2][0]), timeInForce='GTC')
                     #logging.warn(response)
-                    alert('BUY ' + sym + ' price: ' + asks3[2][0] + ' quantity: ' + str(order_quantity))
+                    alert('BUY ' + sym + ' price: ' + asks3[2][0] + ' quantity: ' + str(order_quantity) + 'sell_count: ' + sell_count + ' now left: ' + str(avail_quantity - order_quantity))
                 else:
-                    print order_amount, avail_amount
                     if(order_amount > avail_amount):
-                        alert('BUY ' +  sym + ' not enough amount')
+						logging.warn('BUY ' +  sym + ' amount: ' + str(order_amount) + ' not enough,' + ' now only: ' + str(avail_amount))
 
             logging.info('symbol: ' + sym + ', sell_count: ' + str(sell_count))
-            if(sell_count > 3 or sell_count < -3):
-                alert('abnormal sell_count!!!!!!')
+            #if(sell_count > 3 or sell_count < -3):
+                #alert('abnormal sell_count!!!!!!')
                 
             time.sleep(0.5)
     #time.sleep(sleep_time)
