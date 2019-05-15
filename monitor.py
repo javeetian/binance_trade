@@ -110,7 +110,7 @@ def alert(str):
     telegram_bot_sendtext(bot_token, bot_chatID, str)
     #notify("Warning", str)
 
-if(len(sys.argv) < 5):
+if(len(sys.argv) < 6):
 	print('Not enough parameters exit!')
 	exit(1)
 	
@@ -121,9 +121,9 @@ api_key = sys.argv[1]
 api_secret = sys.argv[2]
 bot_token = sys.argv[3]
 bot_chatID = sys.argv[4]
+config_file = sys.argv[5]
 
 sleep_time = 300
-config_file = 'monitor.ini'
 
 while (1):
     client = Client(api_key, api_secret)
