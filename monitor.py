@@ -11,7 +11,7 @@ from binance.client import Client
 def telegram_bot_sendtext(bot_token, bot_chatID, bot_message):
     response = requests.get('https://api.telegram.org/bot' + bot_token + '/sendMessage?chat_id=' + bot_chatID + '&parse_mode=Markdown&text=' + bot_message)
     return response.json()
-	
+
 def notify(title, text):
     os.system("""
               osascript -e 'display notification "{}" with title "{}"'
@@ -49,15 +49,18 @@ def get_balances(client, syms):
         logging.error(e)
         ret = -2
     else:
-        #print account_info
+        #logging.info(account_info)
         #print prices
         for sym in syms:
             sym['balance'] = get_available_quantity(account_info,sym['symbol'])
             sym['price'] = get_available_price(prices,sym['symbol'])
-            sym['quantity'] = round(float(sym['amount'])/get_available_price(prices,sym['symbol']),1)
+            if(sym['symbol'] == 'TRXBNB'):
+                sym['quantity'] = int(float(sym['amount'])/get_available_price(prices,sym['symbol']))
+            else:
+                sym['quantity'] = round(float(sym['amount'])/get_available_price(prices,sym['symbol']),1)
 
         print syms
-        
+
     return ret, syms
 
 def get_bids_asks(client, sym):
@@ -107,13 +110,14 @@ def check_open_orders(client, sym):
 
 def alert(str):
     logging.warn(str)
-    telegram_bot_sendtext(bot_token, bot_chatID, str)
+    response = telegram_bot_sendtext(bot_token, bot_chatID, str)
+    logging.info(response)
     #notify("Warning", str)
 
 if(len(sys.argv) < 6):
 	print('Not enough parameters exit!')
 	exit(1)
-	
+
 logging.basicConfig(filename=datetime.now().strftime('./log/%Y_%m_%d_%H_%M.log'),level=logging.DEBUG)
 logging.getLogger().addHandler(logging.StreamHandler())
 
@@ -134,7 +138,7 @@ while (1):
         Config.read(config_file)
     else:
         exit(1)
-    pairs_info = [{'symbol':section,'last_price':Config.get(section,"Price"),'count':Config.get(section,"Count"),'profit':Config.get(section,"Profit"),'amount':Config.get(section,"Amount")} for section in Config.sections()]
+    pairs_info = [{'symbol':section,'last_price':Config.get(section,"Price"),'count':Config.get(section,"Count"),'profit_buy':Config.get(section,"profit_buy"),'profit_sell':Config.get(section,"profit_sell"),'amount':Config.get(section,"Amount")} for section in Config.sections()]
     print pairs_info
     ret = check_open_orders(client, pairs_info)
     if ret <  0:
@@ -154,14 +158,22 @@ while (1):
     avail_amount = pairs_info[0]['balance']
     for pl in pairs_info:
         try:
-            sell_price = float(pl['last_price']) * (1 + float(pl['profit'])/100)
-            buy_price = float(pl['last_price']) / (1 + float(pl['profit'])/100)
+            sell_count = int(pl['count'])
+            if(sell_count > 0):
+                sell_price = float(pl['last_price']) * (1 + (abs(sell_count) + float(pl['profit_sell']))/100)
+                buy_price = float(pl['last_price']) / (1 + (abs(sell_count) - 1 + float(pl['profit_buy']))/100)
+            elif (sell_count < 0):
+                sell_price = float(pl['last_price']) * (1 + (abs(sell_count) - 1 + float(pl['profit_sell']))/100)
+                buy_price = float(pl['last_price']) / (1 + (abs(sell_count) + float(pl['profit_buy']))/100)
+            else:
+                sell_price = float(pl['last_price']) * (1 + (abs(sell_count) + float(pl['profit_sell']))/100)
+                buy_price = float(pl['last_price']) / (1 + (abs(sell_count) + float(pl['profit_buy']))/100)
+
             bids3 = pl['bids']
             asks3 = pl['asks']
             order_quantity = pl['quantity']
             order_amount = float(pl['amount'])
             avail_quantity = pl['balance']
-            sell_count = int(pl['count'])
             sym = pl['symbol']
         except KeyError as e:
             print e.message, e.args
@@ -173,13 +185,13 @@ while (1):
             if(sell_price < float(bids3[2][0]) and sell_price > 0):
                 if((order_quantity > 0) and (order_quantity < avail_quantity) and (order_quantity < (float(bids3[0][1]) + float(bids3[1][1]) + float(bids3[2][1])))):
                     sell_count += 1
+                    response = client.create_order(symbol=sym, side='SELL', type='LIMIT', quantity=order_quantity, price=float(bids3[2][0]), timeInForce='GTC')
+                    #logging.warn(response)
                     Config.set(sym, 'Price', str(float(bids3[2][0])))
                     Config.set(sym, 'Count', str(sell_count))
                     with open(config_file, 'wb') as configfile:
                         Config.write(configfile)
-                    response = client.create_order(symbol=sym, side='SELL', type='LIMIT', quantity=order_quantity, price=float(bids3[2][0]), timeInForce='GTC')
-                    #logging.warn(response)
-                    alert('SELL ' +  sym + ' price: ' + bids3[2][0] + ' quantity: ' + str(order_quantity) + 'sell_count: ' + sell_count + ' now left: ' + str(avail_quantity - order_quantity))
+                    alert('\nSELL: ' +  sym + '\nPrice: ' + bids3[2][0] + '\nQuantity: ' + str(order_quantity) + '\nSellcount: ' + str(sell_count) + '\nNow left: ' + str(avail_quantity - order_quantity))
                 else:
                     if(order_quantity > avail_quantity):
                         logging.warn('SELL ' +  sym + ' quantity: ' + str(order_quantity) + ' not enough,' + ' now only: ' + str(avail_quantity))
@@ -188,21 +200,21 @@ while (1):
             if(buy_price > float(asks3[2][0]) and buy_price > 0):
                 if((order_quantity > 0) and (order_amount < avail_amount) and (order_quantity < (float(asks3[0][1]) + float(asks3[1][1]) + float(asks3[2][1])))):
                     sell_count -= 1
+                    response = client.create_order(symbol=sym, side='BUY', type='LIMIT', quantity=order_quantity, price=float(asks3[2][0]), timeInForce='GTC')
+                    #logging.warn(response)
                     Config.set(sym, 'Price', str(float(asks3[2][0])))
                     Config.set(sym, 'Count', str(sell_count))
                     with open(config_file, 'wb') as configfile:
                         Config.write(configfile)
-                    response = client.create_order(symbol=sym, side='BUY', type='LIMIT', quantity=order_quantity, price=float(asks3[2][0]), timeInForce='GTC')
-                    #logging.warn(response)
-                    alert('BUY ' + sym + ' price: ' + asks3[2][0] + ' quantity: ' + str(order_quantity) + 'sell_count: ' + sell_count + ' now left: ' + str(avail_quantity - order_quantity))
+                    alert('\nBUY: ' + sym + '\nPrice: ' + asks3[2][0] + '\nQuantity: ' + str(order_quantity) + '\nSellcount: ' + str(sell_count) + '\nNow left: ' + str(avail_quantity + order_quantity))
                 else:
                     if(order_amount > avail_amount):
-						logging.warn('BUY ' +  sym + ' amount: ' + str(order_amount) + ' not enough,' + ' now only: ' + str(avail_amount))
+			logging.warn('BUY ' +  sym + ' amount: ' + str(order_amount) + ' not enough,' + ' now only: ' + str(avail_amount))
 
             logging.info('symbol: ' + sym + ', sell_count: ' + str(sell_count))
             #if(sell_count > 3 or sell_count < -3):
                 #alert('abnormal sell_count!!!!!!')
-                
+
             time.sleep(0.5)
     #time.sleep(sleep_time)
     break
