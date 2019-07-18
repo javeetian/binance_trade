@@ -56,6 +56,8 @@ def get_balances(client, syms):
             sym['price'] = get_available_price(prices,sym['symbol'])
             if(sym['symbol'] == 'TRXBNB'):
                 sym['quantity'] = int(float(sym['amount'])/get_available_price(prices,sym['symbol']))
+            elif(sym['symbol'] == 'BTCPAX'):
+                sym['quantity'] = round(float(sym['amount'])/get_available_price(prices,sym['symbol']),3)
             else:
                 sym['quantity'] = round(float(sym['amount'])/get_available_price(prices,sym['symbol']),1)
 
@@ -159,6 +161,9 @@ while (1):
     for pl in pairs_info:
         try:
             sell_count = int(pl['count'])
+            sell_price = float(pl['last_price']) * (1 + float(pl['profit_sell'])/100)
+            buy_price  = float(pl['last_price']) / (1 + float(pl['profit_buy'])/100)
+            '''
             if(sell_count > 0):
                 sell_price = float(pl['last_price']) * (1 + (abs(sell_count) + float(pl['profit_sell']))/100)
                 buy_price = float(pl['last_price']) / (1 + (abs(sell_count) - 1 + float(pl['profit_buy']))/100)
@@ -168,7 +173,7 @@ while (1):
             else:
                 sell_price = float(pl['last_price']) * (1 + (abs(sell_count) + float(pl['profit_sell']))/100)
                 buy_price = float(pl['last_price']) / (1 + (abs(sell_count) + float(pl['profit_buy']))/100)
-
+            '''
             bids3 = pl['bids']
             asks3 = pl['asks']
             order_quantity = pl['quantity']
@@ -179,7 +184,7 @@ while (1):
             print e.message, e.args
             continue
         else:
-            print pl['symbol'],sell_price, buy_price, float(bids3[2][0]), float(asks3[2][0])
+            print pl['symbol'], sell_price, float(pl['last_price']), buy_price, float(bids3[2][0]), float(asks3[2][0])
             print order_quantity, avail_quantity, order_amount, avail_amount
             #sell
             if(sell_price < float(bids3[2][0]) and sell_price > 0):
@@ -209,7 +214,7 @@ while (1):
                     alert('\nBUY: ' + sym + '\nPrice: ' + asks3[2][0] + '\nQuantity: ' + str(order_quantity) + '\nSellcount: ' + str(sell_count) + '\nNow left: ' + str(avail_quantity + order_quantity))
                 else:
                     if(order_amount > avail_amount):
-			logging.warn('BUY ' +  sym + ' amount: ' + str(order_amount) + ' not enough,' + ' now only: ' + str(avail_amount))
+                        logging.warn('BUY ' +  sym + ' amount: ' + str(order_amount) + ' not enough,' + ' now only: ' + str(avail_amount))
 
             logging.info('symbol: ' + sym + ', sell_count: ' + str(sell_count))
             #if(sell_count > 3 or sell_count < -3):
