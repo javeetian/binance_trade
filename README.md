@@ -1,12 +1,17 @@
-# binance_trade
-Auto trade EOS/BNB pair on binance exchange
+# Binance Trade
+Auto trade pairs on binance exchange
 
-### install
+### Install
 pip install -r requests.txt
+download pyinstaller
 
-### modify the api key to your own
-in fetch_configs, modify the initial constants
+### Compile
+pyinstaller -F monitor.py
+Modify the api key and some thing as yours in bat file
 
-### run
-python monitor.py
+### Run
+run monitor.bat
 
+### DISCLAIMER
+I am not responsible for anything done with this bot.
+You use it at your own risk.
