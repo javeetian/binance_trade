@@ -17,18 +17,16 @@ def notify(title, text):
               osascript -e 'display notification "{}" with title "{}"'
               """.format(text, title))
 
-def get_price(client, sym):
-    result = client.get_symbol_ticker(symbol=sym)
-    return result['price']
-
+# sym=ETH
 def get_available_quantity(res, sym):
     # find asset balance in list of balances
     if "balances" in res:
         for bal in res['balances']:
-            if bal['asset'].lower() == sym[:-3].lower():
+            if bal['asset'].lower() == sym.lower():
                 return float(bal['free'])
     return 0
 
+# sym=ETHBTC
 def get_available_price(prices, sym):
     ret = -1
     for res in prices:
@@ -52,19 +50,20 @@ def get_balances(client, syms):
         #logging.info(account_info)
         #print prices
         for sym in syms:
-            sym['balance'] = get_available_quantity(account_info,sym['symbol'])
-            sym['price'] = get_available_price(prices,sym['symbol'])
+            sym['balance'] = get_available_quantity(account_info,sym['symbol'].split("|")[0])
+            sym['price'] = get_available_price(prices,sym['symbol'].replace('|',''))
             if(sym['symbol'] == 'TRXBNB'):
-                sym['quantity'] = int(float(sym['amount'])/get_available_price(prices,sym['symbol']))
+                sym['quantity'] = int(float(sym['amount'])/get_available_price(prices,sym['symbol'].replace('|','')))
             elif(sym['symbol'] == 'BTCPAX'):
-                sym['quantity'] = round(float(sym['amount'])/get_available_price(prices,sym['symbol']),3)
+                sym['quantity'] = round(float(sym['amount'])/get_available_price(prices,sym['symbol'].replace('|','')),3)
             else:
-                sym['quantity'] = round(float(sym['amount'])/get_available_price(prices,sym['symbol']),1)
+                sym['quantity'] = round(float(sym['amount'])/get_available_price(prices,sym['symbol'].replace('|','')),1)
 
-        print syms
+        #print syms
 
     return ret, syms
 
+# sym=ETHBTC
 def get_bids_asks(client, sym):
     ret = 0
     bids3 = 0
@@ -88,6 +87,7 @@ def get_bids_asks(client, sym):
                 asks3 = [asks[0], asks[1], asks[2]]
     return ret, bids3, asks3
 
+# sym=ETHBTC
 def check_open_orders(client, sym):
     ret = 0
     try:
@@ -102,7 +102,7 @@ def check_open_orders(client, sym):
         logging.error(e)
         ret = -2
     else:
-        logging.info('Open orders: ' + str(orders))
+        #logging.info('Open orders: ' + str(orders))
         for order in orders:
             alert('have open orders, please check, now exit program!!!!')
             time.sleep(5)
@@ -152,12 +152,11 @@ while (1):
         time.sleep(10)
         continue
     for pair in pairs_info:
-        if pair != pairs_info[0]:
-            ret, pair['bids'], pair['asks'] = get_bids_asks(client, pair['symbol'])
+        ret, pair['bids'], pair['asks'] = get_bids_asks(client, pair['symbol'].replace('|',''))
     if ret <  0:
         time.sleep(10)
         continue
-    logging.info('pairs: ' + str(pairs_info))
+    #logging.info('pairs: ' + str(pairs_info))
     avail_amount = pairs_info[0]['balance']
     for pl in pairs_info:
         try:
@@ -181,6 +180,7 @@ while (1):
         else:
             #print pl['symbol'], sell_price, float(pl['last_price']), buy_price, float(bids3[2][0]), float(asks3[2][0])
             #print order_quantity, avail_quantity, order_amount, avail_amount
+            logging.info("\n")
             logging.info("symbol: "+pl['symbol']+" sell_price: "+str(sell_price)+" last_price: "+str(float(pl['last_price']))+" buy_price: "+str(buy_price)+" act_price: "+str(float(bids3[2][0]))+", "+str(float(asks3[2][0])))
             logging.info('order_quantity: '+str(order_quantity)+' avail_quantity: '+str(avail_quantity)+' order_amount: '+str(order_amount)+' avail_amount: '+str(avail_amount))
             #sell
@@ -188,7 +188,7 @@ while (1):
                 if((order_quantity > 0) and (order_quantity < avail_quantity) and (order_quantity < (float(bids3[0][1]) + float(bids3[1][1]) + float(bids3[2][1])))):
                     sell_count += 1
                     total += 1
-                    response = client.create_order(symbol=sym, side='SELL', type='LIMIT', quantity=order_quantity, price=float(bids3[2][0]), timeInForce='GTC')
+                    response = client.create_order(symbol=sym.replace('|',''), side='SELL', type='LIMIT', quantity=order_quantity, price=float(bids3[2][0]), timeInForce='GTC')
                     #logging.warn(response)
                     # profit = ax^2 + b
                     a = float(pl['profit_gap'])
@@ -222,7 +222,7 @@ while (1):
                     sell_count -= 1
                     total += 1
                     time_last_buy = float(time.time())
-                    response = client.create_order(symbol=sym, side='BUY', type='LIMIT', quantity=order_quantity, price=float(asks3[2][0]), timeInForce='GTC')
+                    response = client.create_order(symbol=sym.replace('|',''), side='BUY', type='LIMIT', quantity=order_quantity, price=float(asks3[2][0]), timeInForce='GTC')
                     #logging.warn(response)
                     # profit = ax^2 + b
                     a = float(pl['profit_gap'])
@@ -251,14 +251,14 @@ while (1):
                         logging.warn('BUY ' +  sym + ' amount: ' + str(order_amount) + ' not enough,' + ' now only: ' + str(avail_amount))
 
             # continue buy
-            print time_gap_buy
-            print (float(time.time()) - time_last_buy)
+            print ("time_gap_buy: "+str(time_gap_buy))
+            print ("time_gap_last: " + str((float(time.time()) - time_last_buy)))
             if(time_gap_buy > 86400 and (float(time.time()) - time_last_buy) > time_gap_buy and buy_price > 0):
                 if((order_quantity > 0) and (order_amount < avail_amount) and (order_quantity < (float(asks3[0][1]) + float(asks3[1][1]) + float(asks3[2][1])))):
                     sell_count -= 1
                     total += 1
                     time_last_buy = float(time.time())
-                    #response = client.create_order(symbol=sym, side='BUY', type='LIMIT', quantity=order_quantity, price=float(asks3[2][0]), timeInForce='GTC')
+                    response = client.create_order(symbol=sym.replace('|',''), side='BUY', type='LIMIT', quantity=order_quantity, price=float(asks3[2][0]), timeInForce='GTC')
                     #logging.warn(response)
                     Config.set(sym, 'Price', str(float(asks3[2][0])))
                     Config.set(sym, 'Count', str(sell_count))
