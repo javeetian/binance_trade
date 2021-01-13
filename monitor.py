@@ -119,10 +119,10 @@ def alert(str):
 def sec2read(seconds):
     ss = int(seconds)
     d = ss/(3600*24)
-    h = ss/3600 - d*24
-    m = ss/60 - d*24*60 - h*60
+    h = (ss - d*24*3600)/3600
+    m = (ss - d*24*3600 - h*3600)/60
     s = ss%60
-    return str(d)+'D '+str(h)+'H '+str(h)+'M '+str(s)+'S'
+    return str(d)+'D '+str(h)+'H '+str(m)+'M '+str(s)+'S'
 
 print time.time()
 if(len(sys.argv) < 6):
