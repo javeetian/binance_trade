@@ -116,6 +116,14 @@ def alert(str):
     logging.info(response)
     #notify("Warning", str)
 
+def sec2read(seconds):
+    ss = int(seconds)
+    d = ss/(3600*24)
+    h = ss/3600 - d*24
+    m = ss/60 - d*24*60 - h*60
+    s = ss%60
+    return str(d)+'D '+str(h)+'H '+str(h)+'M '+str(s)+'S'
+
 print time.time()
 if(len(sys.argv) < 6):
 	print('Not enough parameters exit!')
@@ -251,8 +259,8 @@ while (1):
                         logging.warn('BUY ' +  sym + ' amount: ' + str(order_amount) + ' not enough,' + ' now only: ' + str(avail_amount))
 
             # continue buy
-            print ("time_gap_buy: "+str(time_gap_buy))
-            print ("time_gap_last: " + str((float(time.time()) - time_last_buy)))
+            print ("time_gap_buy: "+sec2read(time_gap_buy))
+            print ("time_gap_last: " + sec2read((float(time.time()) - time_last_buy)))
             if(time_gap_buy > 86400 and (float(time.time()) - time_last_buy) > time_gap_buy and buy_price > 0):
                 if((order_quantity > 0) and (order_amount < avail_amount) and (order_quantity < (float(asks3[0][1]) + float(asks3[1][1]) + float(asks3[2][1])))):
                     sell_count -= 1
