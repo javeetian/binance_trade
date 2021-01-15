@@ -186,9 +186,9 @@ while (1):
             print e.message, e.args
             continue
         else:
+            logging.info("\n")
             #print pl['symbol'], sell_price, float(pl['last_price']), buy_price, float(bids3[2][0]), float(asks3[2][0])
             #print order_quantity, avail_quantity, order_amount, avail_amount
-            logging.info("\n")
             logging.info("symbol: "+pl['symbol']+" sell_price: "+str(sell_price)+" last_price: "+str(float(pl['last_price']))+" buy_price: "+str(buy_price)+" act_price: "+str(float(bids3[2][0]))+", "+str(float(asks3[2][0])))
             logging.info('order_quantity: '+str(order_quantity)+' avail_quantity: '+str(avail_quantity)+' order_amount: '+str(order_amount)+' avail_amount: '+str(avail_amount))
             #sell
