@@ -50,11 +50,12 @@ def get_balances(client, syms):
         #logging.info(account_info)
         #print prices
         for sym in syms:
-            sym['balance'] = get_available_quantity(account_info,sym['symbol'].split("|")[0])
+            sym['balance0'] = get_available_quantity(account_info,sym['symbol'].split("|")[0])
+            sym['balance1'] = get_available_quantity(account_info,sym['symbol'].split("|")[1])
             sym['price'] = get_available_price(prices,sym['symbol'].replace('|',''))
-            if(sym['symbol'] == 'TRXBNB'):
+            if(sym['symbol'] == 'TRX|BNB'):
                 sym['quantity'] = int(float(sym['amount'])/get_available_price(prices,sym['symbol'].replace('|','')))
-            elif(sym['symbol'] == 'BTCPAX'):
+            elif(sym['symbol'] == 'BTC|PAX'):
                 sym['quantity'] = round(float(sym['amount'])/get_available_price(prices,sym['symbol'].replace('|','')),3)
             else:
                 sym['quantity'] = round(float(sym['amount'])/get_available_price(prices,sym['symbol'].replace('|','')),1)
@@ -165,7 +166,6 @@ while (1):
         time.sleep(10)
         continue
     #logging.info('pairs: ' + str(pairs_info))
-    avail_amount = pairs_info[0]['balance']
     for pl in pairs_info:
         try:
             sell_count = int(pl['count'])
@@ -180,7 +180,8 @@ while (1):
             asks3 = pl['asks']
             order_quantity = pl['quantity']
             order_amount = float(pl['amount'])
-            avail_quantity = pl['balance']
+            avail_quantity = pl['balance0']
+            avail_amount = pl['balance1']
             sym = pl['symbol']
         except KeyError as e:
             print e.message, e.args
@@ -189,8 +190,8 @@ while (1):
             logging.info("\n")
             #print pl['symbol'], sell_price, float(pl['last_price']), buy_price, float(bids3[2][0]), float(asks3[2][0])
             #print order_quantity, avail_quantity, order_amount, avail_amount
-            logging.info("symbol: "+pl['symbol']+" sell_price: "+str(sell_price)+" last_price: "+str(float(pl['last_price']))+" buy_price: "+str(buy_price)+" act_price: "+str(float(bids3[2][0]))+", "+str(float(asks3[2][0])))
-            logging.info('order_quantity: '+str(order_quantity)+' avail_quantity: '+str(avail_quantity)+' order_amount: '+str(order_amount)+' avail_amount: '+str(avail_amount))
+            logging.info(""+pl['symbol']+" sell: "+str(sell_price)+" last: "+str(float(pl['last_price']))+" buy: "+str(buy_price)+" act: "+str(float(bids3[2][0]))+", "+str(float(asks3[2][0])))
+            logging.info('order: '+str(order_quantity)+' avail: '+str(avail_quantity)+' order: '+str(order_amount)+' avail: '+str(avail_amount))
             #sell
             if(sell_price < float(bids3[2][0]) and sell_price > 0):
                 if((order_quantity > 0) and (order_quantity < avail_quantity) and (order_quantity < (float(bids3[0][1]) + float(bids3[1][1]) + float(bids3[2][1])))):
