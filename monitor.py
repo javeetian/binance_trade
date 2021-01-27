@@ -145,12 +145,13 @@ while (1):
     client = Client(api_key, api_secret)
     logging.info('\n')
     logging.info(time.asctime( time.localtime(time.time()) ))
+    logging.info(client.get_server_time())
     if(os.path.isfile(config_file)):
         Config = ConfigParser.ConfigParser()
         Config.read(config_file)
     else:
         exit(1)
-    pairs_info = [{'symbol':section,'last_price':Config.get(section,"Price"),'count':Config.get(section,"Count"),'total':Config.get(section,"total"),'time_last_buy':Config.get(section,"time_last_buy"),'time_gap_buy':Config.get(section,"time_gap_buy"),'profit_buy':Config.get(section,"profit_buy"),'profit_sell':Config.get(section,"profit_sell"),'profit_base':Config.get(section,"profit_base"),'profit_gap':Config.get(section,"profit_gap"),'amount':Config.get(section,"amount")} for section in Config.sections()]
+    pairs_info = [{'symbol':section,'last_price':Config.get(section,"Price"),'count':Config.get(section,"Count"),'total':Config.get(section,"total"),'time_last_order':Config.get(section,"time_last_order"),'time_gap_buy':Config.get(section,"time_gap_buy"),'time_gap_sell':Config.get(section,"time_gap_sell"),'profit_buy':Config.get(section,"profit_buy"),'profit_sell':Config.get(section,"profit_sell"),'profit_base':Config.get(section,"profit_base"),'profit_gap':Config.get(section,"profit_gap"),'amount':Config.get(section,"amount")} for section in Config.sections()]
     print pairs_info
     ret = check_open_orders(client, pairs_info)
     if ret <  0:
@@ -170,34 +171,57 @@ while (1):
         try:
             sell_count = int(pl['count'])
             total = int(pl['total'])
-            time_last_buy = float(pl['time_last_buy'])
+            time_last_order = float(pl['time_last_order'])
             time_gap_buy = float(pl['time_gap_buy'])
-            sell_price = float(pl['last_price']) * (1 + float(pl['profit_sell']) / 100)
-            buy_price  = float(pl['last_price']) / (1 + float(pl['profit_buy']) / 100)
-
+            time_gap_sell = float(pl['time_gap_sell'])
 
             bids3 = pl['bids']
             asks3 = pl['asks']
+            bids_price = float(bids3[2][0])
+            asks_price = float(asks3[2][0])
+            bids_count = float(bids3[0][1]) + float(bids3[1][1]) + float(bids3[2][1])
+            asks_count = float(asks3[0][1]) + float(asks3[1][1]) + float(asks3[2][1])
             order_quantity = pl['quantity']
             order_amount = float(pl['amount'])
             avail_quantity = pl['balance0']
             avail_amount = pl['balance1']
             sym = pl['symbol']
+            asks_price_max = 1.2*asks_price
+            bids_price_min = 0.8*bids_price
+
+            if(time_gap_sell > 86400):
+                sell_price = abs(float(pl['last_price']) * (1 + abs(float(pl['profit_base'])) / 100))
+            else:
+                sell_price = abs(float(pl['last_price']) * (1 + abs(float(pl['profit_sell'])) / 100))
+
+            if(time_gap_buy > 86400):
+                buy_price  = abs(float(pl['last_price']) / (1 + abs(float(pl['profit_base'])) / 100))
+            else:
+                buy_price  = abs(float(pl['last_price']) / (1 + abs(float(pl['profit_buy'])) / 100))
+
+            if(buy_price > asks_price_max):
+                alert('\nAbnormal Buy Price: ' + sym + '\nBuy Price: ' + str(buy_price))
+                continue
+            if(sell_price < bids_price_min):
+                alert('\nAbnormal Sell Price: ' + sym + '\nSell Price: ' + str(sell_price))
+                continue
         except KeyError as e:
             print e.message, e.args
             continue
         else:
             logging.info("\n")
-            #print pl['symbol'], sell_price, float(pl['last_price']), buy_price, float(bids3[2][0]), float(asks3[2][0])
+            #print pl['symbol'], sell_price, float(pl['last_price']), buy_price, bids_price, asks_price
             #print order_quantity, avail_quantity, order_amount, avail_amount
-            logging.info(""+pl['symbol']+" sell: "+str(sell_price)+" last: "+str(float(pl['last_price']))+" buy: "+str(buy_price)+" act: "+str(float(bids3[2][0]))+", "+str(float(asks3[2][0])))
+            logging.info(""+pl['symbol']+" sell: "+str(sell_price)+" last: "+str(float(pl['last_price']))+" buy: "+str(buy_price)+" act: "+str(bids_price)+", "+str(asks_price))
             logging.info('order: '+str(order_quantity)+' avail: '+str(avail_quantity)+' order: '+str(order_amount)+' avail: '+str(avail_amount))
+
             #sell
-            if(sell_price < float(bids3[2][0]) and sell_price > 0):
-                if((order_quantity > 0) and (order_quantity < avail_quantity) and (order_quantity < (float(bids3[0][1]) + float(bids3[1][1]) + float(bids3[2][1])))):
+            if(sell_price < bids_price and sell_price > bids_price_min and sell_price > 0):
+                if((order_quantity > 0) and (order_quantity < avail_quantity) and (order_quantity < bids_count)):
                     sell_count += 1
                     total += 1
-                    response = client.create_order(symbol=sym.replace('|',''), side='SELL', type='LIMIT', quantity=order_quantity, price=float(bids3[2][0]), timeInForce='GTC')
+                    time_last_order = float(time.time())
+                    response = client.create_order(symbol=sym.replace('|',''), side='SELL', type='LIMIT', quantity=order_quantity, price=bids_price, timeInForce='GTC')
                     #logging.warn(response)
                     # profit = ax^2 + b
                     a = float(pl['profit_gap'])
@@ -213,25 +237,24 @@ while (1):
                             Config.set(sym, 'profit_sell', str(profit))
                         else:
                             Config.set(sym, 'profit_buy', str(profit))
-
-
-                    Config.set(sym, 'Price', str(float(bids3[2][0])))
+                    Config.set(sym, 'Price', str(bids_price))
                     Config.set(sym, 'Count', str(sell_count))
                     Config.set(sym, 'total', str(total))
+                    Config.set(sym, 'time_last_order', str(time_last_order))
                     with open(config_file, 'wb') as configfile:
                         Config.write(configfile)
-                    alert('\nSELL: ' +  sym + '\nPrice: ' + bids3[2][0] + '\nQuantity: ' + str(order_quantity) + '\nSellCount: ' + str(sell_count) + '\nTotalCount: ' + str(total) + '\nNow left: ' + str(avail_quantity - order_quantity))
+                    alert('\nSELL: ' +  sym + '\nPrice: ' + str(bids_price) + '\nQuantity: ' + str(order_quantity) + '\nSellCount: ' + str(sell_count) + '\nTotalCount: ' + str(total) + '\nNow left: ' + str(avail_quantity - order_quantity))
                 else:
                     if(order_quantity > avail_quantity):
                         logging.warn('SELL ' +  sym + ' quantity: ' + str(order_quantity) + ' not enough,' + ' now only: ' + str(avail_quantity))
 
             #buy
-            if(buy_price > float(asks3[2][0]) and buy_price > 0):
-                if((order_quantity > 0) and (order_amount < avail_amount) and (order_quantity < (float(asks3[0][1]) + float(asks3[1][1]) + float(asks3[2][1])))):
+            if(buy_price > asks_price and buy_price < asks_price_max and buy_price > 0):
+                if((order_quantity > 0) and (order_amount < avail_amount) and (order_quantity < asks_count)):
                     sell_count -= 1
                     total += 1
-                    time_last_buy = float(time.time())
-                    response = client.create_order(symbol=sym.replace('|',''), side='BUY', type='LIMIT', quantity=order_quantity, price=float(asks3[2][0]), timeInForce='GTC')
+                    time_last_order = float(time.time())
+                    response = client.create_order(symbol=sym.replace('|',''), side='BUY', type='LIMIT', quantity=order_quantity, price=asks_price, timeInForce='GTC')
                     #logging.warn(response)
                     # profit = ax^2 + b
                     a = float(pl['profit_gap'])
@@ -247,39 +270,59 @@ while (1):
                             Config.set(sym, 'profit_sell', str(profit))
                         else:
                             Config.set(sym, 'profit_buy', str(profit))
-
-                    Config.set(sym, 'Price', str(float(asks3[2][0])))
+                    Config.set(sym, 'Price', str(asks_price))
                     Config.set(sym, 'Count', str(sell_count))
                     Config.set(sym, 'total', str(total))
-                    Config.set(sym, 'time_last_buy', str(time_last_buy))
+                    Config.set(sym, 'time_last_order', str(time_last_order))
                     with open(config_file, 'wb') as configfile:
                         Config.write(configfile)
-                    alert('\nBUY: ' + sym + '\nPrice: ' + asks3[2][0] + '\nQuantity: ' + str(order_quantity) + '\nSellCount: ' + str(sell_count) + '\nTotalCount: ' + str(total) + '\nNow left: ' + str(avail_quantity + order_quantity))
+                    alert('\nBUY: ' + sym + '\nPrice: ' + str(asks_price) + '\nQuantity: ' + str(order_quantity) + '\nSellCount: ' + str(sell_count) + '\nTotalCount: ' + str(total) + '\nNow left: ' + str(avail_quantity + order_quantity))
                 else:
                     if(order_amount > avail_amount):
                         logging.warn('BUY ' +  sym + ' amount: ' + str(order_amount) + ' not enough,' + ' now only: ' + str(avail_amount))
 
-            # continue buy
-            print ("time_gap_buy: "+sec2read(time_gap_buy))
-            print ("time_gap_last: " + sec2read((float(time.time()) - time_last_buy)))
-            if(time_gap_buy > 86400 and (float(time.time()) - time_last_buy) > time_gap_buy and buy_price > 0):
-                if((order_quantity > 0) and (order_amount < avail_amount) and (order_quantity < (float(asks3[0][1]) + float(asks3[1][1]) + float(asks3[2][1])))):
-                    sell_count -= 1
+            # continue sell
+            print ("time_gap_sell: "+sec2read(time_gap_sell))
+            if(time_gap_sell > 86400 and (float(time.time()) - time_last_order) > time_gap_sell and sell_price > 0):
+                if((order_quantity > 0) and (order_quantity < avail_quantity) and (order_quantity < bids_count)):
+                    sell_count += 1
                     total += 1
-                    time_last_buy = float(time.time())
-                    response = client.create_order(symbol=sym.replace('|',''), side='BUY', type='LIMIT', quantity=order_quantity, price=float(asks3[2][0]), timeInForce='GTC')
+                    time_last_order = float(time.time())
+                    response = client.create_order(symbol=sym.replace('|',''), side='SELL', type='LIMIT', quantity=order_quantity, price=bids_price, timeInForce='GTC')
                     #logging.warn(response)
-                    Config.set(sym, 'Price', str(float(asks3[2][0])))
+                    Config.set(sym, 'Price', str(bids_price))
                     Config.set(sym, 'Count', str(sell_count))
                     Config.set(sym, 'total', str(total))
-                    Config.set(sym, 'time_last_buy', str(time.time()))
+                    Config.set(sym, 'time_last_order', str(time.time()))
                     with open(config_file, 'wb') as configfile:
                         Config.write(configfile)
-                    alert('\nConBUY: ' + sym + '\nPrice: ' + asks3[2][0] + '\nQuantity: ' + str(order_quantity) + '\nSellCount: ' + str(sell_count) + '\nTotalCount: ' + str(total) + '\nNow left: ' + str(avail_quantity + order_quantity))
+                    alert('\nSELL: ' +  sym + '\nPrice: ' + str(bids_price) + '\nQuantity: ' + str(order_quantity) + '\nSellCount: ' + str(sell_count) + '\nTotalCount: ' + str(total) + '\nNow left: ' + str(avail_quantity - order_quantity))
+                else:
+                    if(order_quantity > avail_quantity):
+                        logging.warn('SELL ' +  sym + ' quantity: ' + str(order_quantity) + ' not enough,' + ' now only: ' + str(avail_quantity))
+
+            # continue buy
+            print ("time_gap_buy: "+sec2read(time_gap_buy))
+            if(time_gap_buy > 86400 and (float(time.time()) - time_last_order) > time_gap_buy and buy_price > 0):
+                if((order_quantity > 0) and (order_amount < avail_amount) and (order_quantity < asks_count)):
+                    sell_count -= 1
+                    total += 1
+                    time_last_order = float(time.time())
+                    response = client.create_order(symbol=sym.replace('|',''), side='BUY', type='LIMIT', quantity=order_quantity, price=asks_price, timeInForce='GTC')
+                    #logging.warn(response)
+                    Config.set(sym, 'Price', str(asks_price))
+                    Config.set(sym, 'Count', str(sell_count))
+                    Config.set(sym, 'total', str(total))
+                    Config.set(sym, 'time_last_order', str(time.time()))
+                    with open(config_file, 'wb') as configfile:
+                        Config.write(configfile)
+                    alert('\nConBUY: ' + sym + '\nPrice: ' + str(asks_price) + '\nQuantity: ' + str(order_quantity) + '\nSellCount: ' + str(sell_count) + '\nTotalCount: ' + str(total) + '\nNow left: ' + str(avail_quantity + order_quantity))
                 else:
                     if(order_amount > avail_amount):
                         logging.warn('ConBUY ' +  sym + ' amount: ' + str(order_amount) + ' not enough,' + ' now only: ' + str(avail_amount))
 
+
+            print ("time_gap_last: " + sec2read((float(time.time()) - time_last_order)))
             logging.info('symbol: ' + sym + ', sell_count: ' + str(sell_count))
 
             #if(sell_count > 3 or sell_count < -3):
