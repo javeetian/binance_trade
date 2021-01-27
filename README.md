@@ -2,11 +2,11 @@
 Auto trade pairs on binance exchange
 
 ### Install
-pip install -r requests.txt
+pip install -r requests.txt.
 download pyinstaller
 
 ### Compile
-pyinstaller -F monitor.py
+pyinstaller -F monitor.py.
 Modify the api key and some thing as yours in bat file
 
 ### Run
