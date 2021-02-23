@@ -53,12 +53,7 @@ def get_balances(client, syms):
             sym['balance0'] = get_available_quantity(account_info,sym['symbol'].split("|")[0])
             sym['balance1'] = get_available_quantity(account_info,sym['symbol'].split("|")[1])
             sym['price'] = get_available_price(prices,sym['symbol'].replace('|',''))
-            if(sym['symbol'] == 'TRX|BNB'):
-                sym['quantity'] = int(float(sym['amount'])/get_available_price(prices,sym['symbol'].replace('|','')))
-            elif(sym['symbol'] == 'BTC|PAX'):
-                sym['quantity'] = round(float(sym['amount'])/get_available_price(prices,sym['symbol'].replace('|','')),3)
-            else:
-                sym['quantity'] = round(float(sym['amount'])/get_available_price(prices,sym['symbol'].replace('|','')),1)
+            sym['quantity'] = round(float(sym['amount'])/get_available_price(prices,sym['symbol'].replace('|','')),int(sym['round']))
 
         #print syms
 
@@ -151,8 +146,8 @@ while (1):
         Config.read(config_file)
     else:
         exit(1)
-    pairs_info = [{'symbol':section,'last_price':Config.get(section,"Price"),'count':Config.get(section,"Count"),'total':Config.get(section,"total"),'time_last_order':Config.get(section,"time_last_order"),'time_gap_buy':Config.get(section,"time_gap_buy"),'time_gap_sell':Config.get(section,"time_gap_sell"),'profit_buy':Config.get(section,"profit_buy"),'profit_sell':Config.get(section,"profit_sell"),'profit_base':Config.get(section,"profit_base"),'profit_gap':Config.get(section,"profit_gap"),'amount':Config.get(section,"amount")} for section in Config.sections()]
-    print pairs_info
+    pairs_info = [{'symbol':section,'last_price':Config.get(section,"Price"),'count':Config.get(section,"Count"),'total':Config.get(section,"total"),'round':Config.get(section,"round"),'time_last_order':Config.get(section,"time_last_order"),'time_gap_buy':Config.get(section,"time_gap_buy"),'time_gap_sell':Config.get(section,"time_gap_sell"),'profit_buy':Config.get(section,"profit_buy"),'profit_sell':Config.get(section,"profit_sell"),'profit_base':Config.get(section,"profit_base"),'profit_gap':Config.get(section,"profit_gap"),'amount':Config.get(section,"amount")} for section in Config.sections()]
+    #print pairs_info
     ret = check_open_orders(client, pairs_info)
     if ret <  0:
         time.sleep(10)
@@ -186,8 +181,8 @@ while (1):
             avail_quantity = pl['balance0']
             avail_amount = pl['balance1']
             sym = pl['symbol']
-            asks_price_max = 1.2*asks_price
-            bids_price_min = 0.8*bids_price
+            asks_price_max = 1.3*asks_price
+            bids_price_min = 0.7*bids_price
 
             if(time_gap_sell > 86400):
                 sell_price = abs(float(pl['last_price']) * (1 + abs(float(pl['profit_base'])) / 100))
