@@ -1,3 +1,4 @@
+# -*- coding: cp936 -*-
 import os
 import sys
 import time
@@ -7,6 +8,34 @@ import binance
 import configparser
 from datetime import datetime
 from binance.client import Client
+
+#判断变量类型的函数
+def typeof(variate):
+    type=None
+    if isinstance(variate,int):
+        type = "int"
+    elif isinstance(variate,str):
+        type = "str"
+    elif isinstance(variate,float):
+        type = "float"
+    elif isinstance(variate,list):
+        type = "list"
+    elif isinstance(variate,tuple):
+        type = "tuple"
+    elif isinstance(variate,dict):
+        type = "dict"
+    elif isinstance(variate,set):
+        type = "set"
+    return type
+
+# 返回变量类型
+def getType(variate):
+    arr = {"int":"Integer","float":"Float","str":"String","list":"List","tuple":"Tuple","dict":"Dict","set":"Set"}
+    vartype = typeof(variate)
+    if not (vartype in arr):
+        print("Unkown type")
+    else:
+        print(arr[vartype])
 
 def telegram_bot_sendtext(bot_token, bot_chatID, bot_message):
     response = requests.get('https://api.telegram.org/bot' + bot_token + '/sendMessage?chat_id=' + bot_chatID + '&parse_mode=Markdown&text=' + bot_message)
@@ -120,14 +149,13 @@ def sec2read(seconds):
     s = ss%60
     return str(d)+'D '+str(h)+'H '+str(m)+'M '+str(s)+'S'
 
-#print time.time()
+#print(time.time())
 if(len(sys.argv) < 6):
 	print('Not enough parameters exit!')
 	exit(1)
 
 logging.basicConfig(filename=datetime.now().strftime('./log/%Y_%m_%d_%H_%M.log'),level=logging.DEBUG)
 logging.getLogger().addHandler(logging.StreamHandler())
-
 api_key = sys.argv[1]
 api_secret = sys.argv[2]
 bot_token = sys.argv[3]
@@ -146,7 +174,7 @@ while (1):
         Config.read(config_file)
     else:
         exit(1)
-    pairs_info = [{'symbol':section,'last_price':Config.get(section,"Price"),'count':Config.get(section,"Count"),'total':Config.get(section,"total"),'round':Config.get(section,"round"),'time_last_order':Config.get(section,"time_last_order"),'time_gap_buy':Config.get(section,"time_gap_buy"),'time_gap_sell':Config.get(section,"time_gap_sell"),'profit_buy':Config.get(section,"profit_buy"),'profit_sell':Config.get(section,"profit_sell"),'profit_base':Config.get(section,"profit_base"),'profit_gap':Config.get(section,"profit_gap"),'amount':Config.get(section,"amount")} for section in Config.sections()]
+    pairs_info = [{'symbol':section,'ratio':Config.get(section,"ratio"),'last_price':Config.get(section,"Price"),'count':Config.get(section,"Count"),'total':Config.get(section,"total"),'round':Config.get(section,"round"),'time_last_order':Config.get(section,"time_last_order"),'time_gap_buy':Config.get(section,"time_gap_buy"),'time_gap_sell':Config.get(section,"time_gap_sell"),'profit_buy':Config.get(section,"profit_buy"),'profit_sell':Config.get(section,"profit_sell"),'profit_base':Config.get(section,"profit_base"),'profit_gap':Config.get(section,"profit_gap"),'amount':Config.get(section,"amount")} for section in Config.sections()]
     #print pairs_info
     ret = 1#check_open_orders(client, pairs_info)
     if ret <  0:
@@ -169,6 +197,7 @@ while (1):
             time_last_order = float(pl['time_last_order'])
             time_gap_buy = float(pl['time_gap_buy'])
             time_gap_sell = float(pl['time_gap_sell'])
+            ratio = float(pl['ratio'])
 
             bids3 = pl['bids']
             asks3 = pl['asks']
@@ -207,11 +236,31 @@ while (1):
             logging.info("\n")
             #print pl['symbol'], sell_price, float(pl['last_price']), buy_price, bids_price, asks_price
             #print order_quantity, avail_quantity, order_amount, avail_amount
+
+            # calc ratio
+            if(ratio > 0):
+                sell_price = 0
+                buy_price = 0
+                order_quantity = 0
+                price = (bids_price + asks_price)/2
+                amount = avail_quantity * price
+                curr_ratio = amount / avail_amount
+                print(curr_ratio, price, amount, avail_amount)
+                if(abs(curr_ratio-ratio)/ratio>(float(pl['profit_base'])/100)):
+                    if(amount > avail_amount):
+                        sell_price = bids_price
+                        buy_price = 0
+                        order_quantity = round(abs(amount - avail_amount)/(1+ratio)/price,int(pl['round']))
+                    else:
+                        sell_price = 0
+                        buy_price = asks_price
+                        order_quantity = round(abs(amount - avail_amount)*ratio/(1+ratio)/price,int(pl['round']))
+
             logging.info(""+pl['symbol']+" sell: "+str(sell_price)+" last: "+str(float(pl['last_price']))+" buy: "+str(buy_price)+" act: "+str(bids_price)+", "+str(asks_price))
             logging.info('order: '+str(order_quantity)+' avail: '+str(avail_quantity)+' order: '+str(order_amount)+' avail: '+str(avail_amount))
 
             #sell
-            if(sell_price < bids_price and sell_price > bids_price_min and sell_price > 0):
+            if(sell_price <= bids_price and sell_price > bids_price_min and sell_price > 0):
                 if((order_quantity > 0) and (order_quantity < avail_quantity) and (order_quantity < bids_count)):
                     sell_count += 1
                     total += 1
@@ -244,13 +293,13 @@ while (1):
                         logging.warn('SELL ' +  sym + ' quantity: ' + str(order_quantity) + ' not enough,' + ' now only: ' + str(avail_quantity))
 
             #buy
-            if(buy_price > asks_price and buy_price < asks_price_max and buy_price > 0):
+            if(buy_price >= asks_price and buy_price < asks_price_max and buy_price > 0):
                 if((order_quantity > 0) and (order_amount < avail_amount) and (order_quantity < asks_count)):
                     sell_count -= 1
                     total += 1
                     time_last_order = float(time.time())
                     response = client.create_order(symbol=sym.replace('|',''), side='BUY', type='LIMIT', quantity=order_quantity, price=asks_price, timeInForce='GTC')
-                    #logging.warn(response)
+                    logging.warn(response)
                     # profit = ax^2 + b
                     a = float(pl['profit_gap'])
                     x = abs(sell_count) * abs(sell_count)
