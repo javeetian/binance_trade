@@ -1,4 +1,2 @@
-numpy
-ta-lib==0.4.24
 requests
 python-binance==1.0.15
